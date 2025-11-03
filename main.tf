@@ -1,57 +1,113 @@
+##############################################################
+# AWS Multi-Tier Web App Deployment (Terraform)
+# Region: ap-southeast-2 (Sydney)
+##############################################################
+
+# --- PROVIDER CONFIGURATION ---
 provider "aws" {
-  region = "ap-southeast-2" # changed to Sydney region
+  region = "ap-southeast-2"
 }
 
-# --- VPC ---
+##############################################################
+# 1. VPC SETUP
+##############################################################
 resource "aws_vpc" "main" {
-  cidr_block = "10.0.0.0/16"
-  tags = { Name = "multi-tier-vpc" }
+  cidr_block           = "10.0.0.0/16"
+  enable_dns_support   = true
+  enable_dns_hostnames = true
+
+  tags = {
+    Name = "main-vpc"
+  }
 }
 
-resource "aws_subnet" "public_subnet" {
-  vpc_id     = aws_vpc.main.id
-  cidr_block = "10.0.1.0/24"
+##############################################################
+# 2. SUBNETS (Public + Private)
+##############################################################
+# Public Subnet
+resource "aws_subnet" "public_a" {
+  vpc_id                  = aws_vpc.main.id
+  cidr_block              = "10.0.1.0/24"
+  availability_zone       = "ap-southeast-2a"
   map_public_ip_on_launch = true
-  availability_zone = "ap-southeast-2a" # updated AZ to Sydney
-  tags = { Name = "public-subnet" }
+
+  tags = {
+    Name = "public-subnet-a"
+  }
 }
 
-# --- Internet Gateway ---
-resource "aws_internet_gateway" "gw" {
+# Private Subnet A
+resource "aws_subnet" "private_a" {
+  vpc_id            = aws_vpc.main.id
+  cidr_block        = "10.0.2.0/24"
+  availability_zone = "ap-southeast-2a"
+
+  tags = {
+    Name = "private-subnet-a"
+  }
+}
+
+# Private Subnet B
+resource "aws_subnet" "private_b" {
+  vpc_id            = aws_vpc.main.id
+  cidr_block        = "10.0.3.0/24"
+  availability_zone = "ap-southeast-2b"
+
+  tags = {
+    Name = "private-subnet-b"
+  }
+}
+
+##############################################################
+# 3. INTERNET GATEWAY + ROUTE TABLE
+##############################################################
+resource "aws_internet_gateway" "igw" {
   vpc_id = aws_vpc.main.id
-  tags = { Name = "main-gateway" }
+
+  tags = {
+    Name = "main-igw"
+  }
 }
 
-# --- Route Table ---
 resource "aws_route_table" "public_rt" {
   vpc_id = aws_vpc.main.id
+
   route {
     cidr_block = "0.0.0.0/0"
-    gateway_id = aws_internet_gateway.gw.id
+    gateway_id = aws_internet_gateway.igw.id
+  }
+
+  tags = {
+    Name = "public-route-table"
   }
 }
 
 resource "aws_route_table_association" "public_assoc" {
-  subnet_id      = aws_subnet.public_subnet.id
+  subnet_id      = aws_subnet.public_a.id
   route_table_id = aws_route_table.public_rt.id
 }
 
-# --- Security Groups ---
+##############################################################
+# 4. SECURITY GROUPS
+##############################################################
+# Web Server SG (for EC2)
 resource "aws_security_group" "web_sg" {
   name        = "web-sg"
   description = "Allow HTTP and SSH"
   vpc_id      = aws_vpc.main.id
 
   ingress {
-    from_port   = 22
-    to_port     = 22
+    description = "Allow HTTP"
+    from_port   = 80
+    to_port     = 80
     protocol    = "tcp"
     cidr_blocks = ["0.0.0.0/0"]
   }
 
   ingress {
-    from_port   = 80
-    to_port     = 80
+    description = "Allow SSH"
+    from_port   = 22
+    to_port     = 22
     protocol    = "tcp"
     cidr_blocks = ["0.0.0.0/0"]
   }
@@ -62,62 +118,97 @@ resource "aws_security_group" "web_sg" {
     protocol    = "-1"
     cidr_blocks = ["0.0.0.0/0"]
   }
-}
 
-# --- EC2 Instance ---
-data "aws_ami" "ubuntu" {
-  most_recent = true
-  owners      = ["099720109477"] # Canonical
-  filter {
-    name   = "name"
-    values = ["ubuntu/images/hvm-ssd/ubuntu-focal-20.04-amd64-server-*"]
+  tags = {
+    Name = "web-sg"
   }
 }
 
+# Database SG (for RDS)
+resource "aws_security_group" "db_sg" {
+  name        = "db-sg"
+  description = "Allow MySQL from web subnet"
+  vpc_id      = aws_vpc.main.id
+
+  ingress {
+    description     = "MySQL from web_sg"
+    from_port       = 3306
+    to_port         = 3306
+    protocol        = "tcp"
+    security_groups = [aws_security_group.web_sg.id]
+  }
+
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  tags = {
+    Name = "db-sg"
+  }
+}
+
+##############################################################
+# 5. EC2 INSTANCE (Web Server)
+##############################################################
 resource "aws_instance" "web" {
-  ami                    = data.aws_ami.ubuntu.id
-  instance_type          = "t2.micro"
-  subnet_id              = aws_subnet.public_subnet.id
-  vpc_security_group_ids = [aws_security_group.web_sg.id]
-  user_data              = file("user_data.sh")
-  tags = { Name = "web-tier" }
-}
+  ami                         = "ami-0df609f69029c9bdb" # Amazon Linux 2 in ap-southeast-2
+  instance_type               = "t3.micro" # Free Tier eligible
+  subnet_id                   = aws_subnet.public_a.id
+  vpc_security_group_ids      = [aws_security_group.web_sg.id]
+  associate_public_ip_address = true
+  key_name                    = "my-key" # 🔑 Replace with your actual key
 
-# --- Load Balancer (optional) ---
-resource "aws_elb" "web_elb" {
-  name = "web-elb"
-  availability_zones = ["ap-southeast-2a"] # updated AZ
+  user_data = <<-EOF
+              #!/bin/bash
+              sudo yum update -y
+              sudo yum install -y httpd
+              echo "<h1>Deployed with Terraform!</h1>" > /var/www/html/index.html
+              sudo systemctl enable httpd
+              sudo systemctl start httpd
+              EOF
 
-  listener {
-    instance_port     = 80
-    instance_protocol = "http"
-    lb_port           = 80
-    lb_protocol       = "http"
+  tags = {
+    Name = "web-server"
   }
+}
 
-  instances = [aws_instance.web.id]
-  health_check {
-    target              = "HTTP:80/"
-    interval            = 30
-    healthy_threshold   = 2
-    unhealthy_threshold = 2
-    timeout             = 5
+##############################################################
+# 6. RDS DATABASE (MySQL)
+##############################################################
+resource "aws_db_subnet_group" "db_subnet_group" {
+  name       = "db-subnet-group"
+  subnet_ids = [
+    aws_subnet.private_a.id,
+    aws_subnet.private_b.id
+  ]
+
+  tags = {
+    Name = "db-subnet-group"
   }
-
-  tags = { Name = "web-elb" }
 }
 
-# --- RDS Database ---
-resource "aws_db_instance" "rds" {
-  allocated_storage    = 20
-  engine               = "mysql"
-  engine_version       = "8.0"
-  instance_class       = "db.t3.micro"
-  db_name              = "appdb"
-  username             = "admin"
-  password             = "Password123!"
-  skip_final_snapshot  = true
-  publicly_accessible  = false
-  vpc_security_group_ids = [aws_security_group.web_sg.id]
-  tags = { Name = "db-tier" }
+resource "aws_db_instance" "app_db" {
+  identifier             = "mydb-instance"
+  allocated_storage      = 20
+  db_name                = "mydb"
+  engine                 = "mysql"
+  engine_version         = "8.0"
+  instance_class         = "db.t3.micro" # Free Tier eligible in Sydney
+  username               = "admin"
+  password               = "password123!"
+  db_subnet_group_name   = aws_db_subnet_group.db_subnet_group.name
+  vpc_security_group_ids = [aws_security_group.db_sg.id]
+  skip_final_snapshot    = true
+  publicly_accessible    = false
+
+  tags = {
+    Name = "mydb-instance"
+  }
 }
+
+##############################################################
+# END OF CONFIGURATION
+##############################################################
