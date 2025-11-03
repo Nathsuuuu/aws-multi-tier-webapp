@@ -18,4 +18,6 @@ This project demonstrates how to deploy a 3-tier architecture (Web, Application,
 
 ⚙️ How to Deploy
 ```bash
-
+terraform init
+terraform plan
+terraform apply -auto-approve
