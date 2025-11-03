@@ -3,7 +3,12 @@ This project showcases the deployment of a scalable and secure three-tier web ar
 It demonstrates how to separate the presentation, application, and database layers into distinct tiers — improving scalability, reliability, and maintainability.
 
 ---
-<h2>🏛️ Architecture Overview</h2>
+
+<h2 align="center">🏗️ Architecture Overview</h2>
+<p align="center">
+  <img src="./architectureOverview.png" width="700" alt="AWS Multi-Tier Architecture"/>
+</p>
+
 
  🚀 Key Features
 - Infrastructure as Code: Entire environment provisioned automatically with Terraform  
