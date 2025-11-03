@@ -1,16 +1,16 @@
-##############################################################
-# AWS Multi-Tier Web App Deployment (Terraform)
-# Region: ap-southeast-2 (Sydney)
-##############################################################
 
-# --- PROVIDER CONFIGURATION ---
+ AWS Multi-Tier Web App Deployment (Terraform)
+ Region: ap-southeast-2 (Sydney)
+
+
+ --- PROVIDER CONFIGURATION ---
 provider "aws" {
   region = "ap-southeast-2"
 }
 
-##############################################################
-# 1. VPC SETUP
-##############################################################
+
+ 1. VPC SETUP
+
 resource "aws_vpc" "main" {
   cidr_block           = "10.0.0.0/16"
   enable_dns_support   = true
@@ -21,10 +21,10 @@ resource "aws_vpc" "main" {
   }
 }
 
-##############################################################
-# 2. SUBNETS (Public + Private)
-##############################################################
-# Public Subnet
+
+ 2. SUBNETS (Public + Private)
+
+ Public Subnet
 resource "aws_subnet" "public_a" {
   vpc_id                  = aws_vpc.main.id
   cidr_block              = "10.0.1.0/24"
@@ -36,7 +36,7 @@ resource "aws_subnet" "public_a" {
   }
 }
 
-# Private Subnet A
+ Private Subnet A
 resource "aws_subnet" "private_a" {
   vpc_id            = aws_vpc.main.id
   cidr_block        = "10.0.2.0/24"
@@ -47,7 +47,7 @@ resource "aws_subnet" "private_a" {
   }
 }
 
-# Private Subnet B
+ Private Subnet B
 resource "aws_subnet" "private_b" {
   vpc_id            = aws_vpc.main.id
   cidr_block        = "10.0.3.0/24"
@@ -58,9 +58,9 @@ resource "aws_subnet" "private_b" {
   }
 }
 
-##############################################################
-# 3. INTERNET GATEWAY + ROUTE TABLE
-##############################################################
+
+ 3. INTERNET GATEWAY + ROUTE TABLE
+
 resource "aws_internet_gateway" "igw" {
   vpc_id = aws_vpc.main.id
 
@@ -87,10 +87,10 @@ resource "aws_route_table_association" "public_assoc" {
   route_table_id = aws_route_table.public_rt.id
 }
 
-##############################################################
-# 4. SECURITY GROUPS
-##############################################################
-# Web Server SG (for EC2)
+
+ 4. SECURITY GROUPS
+
+ Web Server SG (for EC2)
 resource "aws_security_group" "web_sg" {
   name        = "web-sg"
   description = "Allow HTTP and SSH"
@@ -124,7 +124,7 @@ resource "aws_security_group" "web_sg" {
   }
 }
 
-# Database SG (for RDS)
+ Database SG (for RDS)
 resource "aws_security_group" "db_sg" {
   name        = "db-sg"
   description = "Allow MySQL from web subnet"
@@ -150,19 +150,19 @@ resource "aws_security_group" "db_sg" {
   }
 }
 
-##############################################################
-# 5. EC2 INSTANCE (Web Server)
-##############################################################
+
+ 5. EC2 INSTANCE (Web Server)
+
 resource "aws_instance" "web" {
-  ami                         = "ami-0df609f69029c9bdb" # Amazon Linux 2 in ap-southeast-2
-  instance_type               = "t3.micro" # Free Tier eligible
+  ami                         = "ami-0df609f69029c9bdb"  Amazon Linux 2 in ap-southeast-2
+  instance_type               = "t3.micro"  Free Tier eligible
   subnet_id                   = aws_subnet.public_a.id
   vpc_security_group_ids      = [aws_security_group.web_sg.id]
   associate_public_ip_address = true
-  key_name                    = "my-key" # 🔑 Replace with your actual key
+  key_name                    = "my-key"  🔑 Replace with your actual key
 
   user_data = <<-EOF
-              #!/bin/bash
+              !/bin/bash
               sudo yum update -y
               sudo yum install -y httpd
               echo "<h1>Deployed with Terraform!</h1>" > /var/www/html/index.html
@@ -175,9 +175,9 @@ resource "aws_instance" "web" {
   }
 }
 
-##############################################################
-# 6. RDS DATABASE (MySQL)
-##############################################################
+
+ 6. RDS DATABASE (MySQL)
+
 resource "aws_db_subnet_group" "db_subnet_group" {
   name       = "db-subnet-group"
   subnet_ids = [
@@ -196,7 +196,7 @@ resource "aws_db_instance" "app_db" {
   db_name                = "mydb"
   engine                 = "mysql"
   engine_version         = "8.0"
-  instance_class         = "db.t3.micro" # Free Tier eligible in Sydney
+  instance_class         = "db.t3.micro"  Free Tier eligible in Sydney
   username               = "admin"
   password               = "password123!"
   db_subnet_group_name   = aws_db_subnet_group.db_subnet_group.name
@@ -209,6 +209,7 @@ resource "aws_db_instance" "app_db" {
   }
 }
 
-##############################################################
-# END OF CONFIGURATION
-##############################################################
+
+ END OF CONFIGURATION
+
+
